@@ -59,11 +59,7 @@ TrafficDriver.ai — https://trafficdriver.ai/
 
 EMAIL_TEMPLATES = {
     1: {
-        "subjects": [
-            "different kind of dealership support",
-            "real people, real phones, real results",
-            "not software — actual humans doing the work"
-        ],
+        "subject": "real people, real phones, real results",
         "body": """Hi {first_name},
 
 I know your inbox is full of software demos and marketing pitches. We're not one of those.
@@ -83,10 +79,7 @@ Everything's a la carte. You pick what you need. Everyone works out of our Chica
 Worth a conversation?"""
     },
     2: {
-        "subjects": [
-            "quick follow up",
-            "following up"
-        ],
+        "subject": "quick follow up",
         "body": """Hi {first_name},
 
 Following up on my email from last week. 90% of dealerships have at least one gap in their lead process. Most fill those gaps with us instead of expanding their internal teams.
@@ -96,10 +89,7 @@ Here's one we see a lot: a dealer paying $4,000+ a month for equity mining softw
 If any of this sounds familiar, let me know."""
     },
     3: {
-        "subjects": [
-            "spread thin?",
-            "quick thought"
-        ],
+        "subject": "spread thin?",
         "body": """Hi {first_name},
 
 Some of the dealerships we work with aren't missing a piece of the puzzle. They're just spread thin. Their team handles everything, but everything's a little backed up.
@@ -109,10 +99,7 @@ That's where our BDC support packages come in. We work behind your existing team
 If that sounds like your store, happy to talk through it."""
     },
     4: {
-        "subjects": [
-            "last one from me",
-            "dealers crushing it"
-        ],
+        "subject": "last one from me",
         "body": """Hi {first_name},
 
 I'll keep this short since I've sent a few now. Just wanted to share that we've got dealers running with us who are now #1 in their region. Multiple stores. Not because they bought more software — because they finally had actual people working their leads.
@@ -160,7 +147,7 @@ def compose_email(contact):
     week = contact["outreach_week"]
     template = EMAIL_TEMPLATES[week]
 
-    subject = random.choice(template["subjects"])
+    subject = template["subject"]
     body = template["body"].format(first_name=contact["first_name"] or "there")
 
     full_plain = body + "\n\n" + SIGNATURE_PLAIN

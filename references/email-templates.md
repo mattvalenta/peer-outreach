@@ -18,10 +18,7 @@ Every email is multipart: plain text body + HTML signature from `assets/signatur
 
 **Positioning:** We are NOT a software company, NOT a marketing agency, NOT an ad vendor. We are a US-based offsite team of real people who pick up the phone and do the work — converting leads, calling customers, answering inbound. We use AI where it makes sense, but our core is human execution. Every employee works from our Chicagoland office — no remote, no overseas. Lead with that distinction.
 
-**Subject (pick one, rotate):**
-- `different kind of dealership support`
-- `real people, real phones, real results`
-- `not software — actual humans doing the work`
+**Subject:** `real people, real phones, real results`
 
 **Body:**
 ```
@@ -50,9 +47,7 @@ Gabby
 
 ## Email 2 (Week 2) — Follow-Up + Equity Mining Angle
 
-**Subject (pick one, rotate):**
-- `quick follow up`
-- `following up`
+**Subject:** `quick follow up`
 
 **Body:**
 ```
@@ -71,9 +66,7 @@ Gabby
 
 ## Email 3 (Week 3) — Spread Thin / BDC Support Packages
 
-**Subject (pick one, rotate):**
-- `spread thin?`
-- `quick thought`
+**Subject:** `spread thin?`
 
 **Body:**
 ```
@@ -92,9 +85,7 @@ Gabby
 
 ## Email 4 (Week 4) — Testimonial / Referral Offer
 
-**Subject (pick one, rotate):**
-- `last one from me`
-- `dealers crushing it`
+**Subject:** `last one from me`
 
 **Body:**
 ```
