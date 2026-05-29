@@ -133,6 +133,9 @@ def get_contacts(limit=DAILY_LIMIT):
             SELECT contact_id FROM peer_outreach_log
             WHERE created_at > NOW() - INTERVAL '10 minutes'
           )
+          AND LOWER(email) NOT IN (
+            SELECT LOWER(email) FROM bad_emails
+          )
         ORDER BY last_sent_at ASC NULLS FIRST
         LIMIT %s
     """, (limit,))

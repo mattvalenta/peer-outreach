@@ -30,6 +30,17 @@ def get_sales_crm_db():
     return psycopg2.connect(SALES_CRM_DB_URL, cursor_factory=RealDictCursor)
 
 
+def get_bad_emails():
+    """Get set of bad email addresses from sales_crm.bad_emails for filtering."""
+    conn = get_sales_crm_db()
+    cur = conn.cursor()
+    cur.execute("SELECT LOWER(email) AS email FROM bad_emails")
+    bad = {row['email'] for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return bad
+
+
 def fetch_gms_from_clients(limit=None):
     """Pull GMs from the clients database (sales_contacts + sales_companies)."""
     conn = get_clients_db()
@@ -116,6 +127,13 @@ def main():
     print("Fetching GMs from clients database...")
     contacts = fetch_gms_from_clients(limit=args.limit)
     print(f"Found {len(contacts)} GMs with valid emails")
+
+    # Filter out bad emails
+    print("Loading bad email suppression list...")
+    bad_emails = get_bad_emails()
+    print(f"{len(bad_emails)} bad emails in suppression list")
+    contacts = [c for c in contacts if c['email'].lower() not in bad_emails]
+    print(f"{len(contacts)} contacts after removing bad emails")
 
     if not contacts:
         print("No contacts found.")
