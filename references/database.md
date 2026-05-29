@@ -119,12 +119,15 @@ LIMIT 100;
 ## Seed Query (from clients DB)
 
 ```sql
-SELECT c.id::text, c.first_name, c.last_name, c.email_1, c.title,
-       co.company_name, co.city, co.state, c.contact_phone_1
+SELECT c.id::text, c.first_name, c.last_name,
+       COALESCE(NULLIF(c.email_1, ''), NULLIF(c.email_2, ''), NULLIF(c.personal_email, '')) AS email,
+       c.title, co.company_name, co.city, co.state, c.contact_phone_1
 FROM sales_contacts c
 JOIN sales_companies co ON c.company_id = co.id
-WHERE c.email_1 IS NOT NULL AND c.email_1 != ''
-  AND c.title_category IN ('General Manager', 'Owner');
+WHERE c.title_category IN ('General Manager', 'Owner')
+  AND (NULLIF(c.email_1, '') IS NOT NULL
+    OR NULLIF(c.email_2, '') IS NOT NULL
+    OR NULLIF(c.personal_email, '') IS NOT NULL);
 ```
 
 ## Status Values

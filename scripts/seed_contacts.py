@@ -40,7 +40,7 @@ def fetch_gms_from_clients(limit=None):
             c.id::text AS source_contact_id,
             c.first_name,
             c.last_name,
-            c.email_1 AS email,
+            COALESCE(NULLIF(c.email_1, ''), NULLIF(c.email_2, ''), NULLIF(c.personal_email, '')) AS email,
             c.title AS role,
             co.company_name AS dealership_name,
             co.city AS dealership_city,
@@ -48,9 +48,10 @@ def fetch_gms_from_clients(limit=None):
             c.contact_phone_1 AS phone
         FROM sales_contacts c
         JOIN sales_companies co ON c.company_id = co.id
-        WHERE c.email_1 IS NOT NULL
-          AND c.email_1 != ''
-          AND c.title_category IN ('General Manager', 'Owner')
+        WHERE c.title_category IN ('General Manager', 'Owner')
+          AND (NULLIF(c.email_1, '') IS NOT NULL
+            OR NULLIF(c.email_2, '') IS NOT NULL
+            OR NULLIF(c.personal_email, '') IS NOT NULL)
         ORDER BY c.created_at
     """
     if limit:
