@@ -154,7 +154,8 @@ def classify_intent(body_text, subject):
     # Short replies with interest signals
     if len(text) < 50:
         short_positive = ["yes", "interested", "tell me", "call", "please",
-                          "more info", "sure", "ok", "sounds interesting"]
+                          "more info", "sure", "ok", "sounds interesting", "thanks",
+                          "thank you", "sounds good"]
         if any(p in text for p in short_positive):
             return "positive"
 
