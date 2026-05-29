@@ -37,8 +37,8 @@ FROM_EMAIL = "gabby@trafficdriver.ai"
 FROM_NAME = "Gabby Pals"
 
 DAILY_LIMIT = 100
-MIN_DELAY_SEC = 120  # 2 min
-MAX_DELAY_SEC = 300  # 5 min
+MIN_DELAY_SEC = 240  # 4 min
+MAX_DELAY_SEC = 480  # 8 min
 
 # ── Signature ───────────────────────────────────────────
 SIGNATURE_HTML = """<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333333; line-height: 1.5;">
