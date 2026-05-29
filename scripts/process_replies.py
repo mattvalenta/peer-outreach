@@ -46,6 +46,14 @@ FROM_EMAIL = "gabby@trafficdriver.ai"
 FROM_NAME = "Gabby Pals"
 GROWTH_EMAIL = "growth@paramountals.com"
 
+SIGNATURE_HTML = """<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333333; line-height: 1.5;">
+  <strong style="color: #1a1a1a;">Gabby Pals</strong><br>
+  <span style="color: #666666;">Solutions Consultant</span><br><br>
+  <a href="https://paramountals.com/" style="color: #2b6cb0; text-decoration: underline;">Paramount Lead Solutions</a><br>
+  <a href="https://trafficdriver.ai/" style="color: #2b6cb0; text-decoration: underline;">TrafficDriver.ai</a><br><br>
+  <a href="tel:8006435084" style="color: #2b6cb0; text-decoration: none;">800-643-5084</a>
+</div>"""
+
 SIGNATURE_PLAIN = """Gabby Pals
 Solutions Consultant
 Paramount Lead Solutions — https://paramountals.com/
@@ -178,13 +186,18 @@ def find_contact(from_email):
     return contact
 
 
-def send_smtp(to_email, to_name, subject, plain_body, html_body=None):
-    """Send an email via Gmail SMTP."""
+def send_smtp(to_email, to_name, subject, plain_body, html_body=None, in_reply_to=None):
+    """Send an email via Gmail SMTP. Optionally thread as a reply."""
     msg = MIMEMultipart("alternative")
     msg["From"] = formataddr((FROM_NAME, FROM_EMAIL))
     msg["To"] = formataddr((to_name or "", to_email))
     msg["Subject"] = subject
     msg["Message-ID"] = f"peer-outreach-reply-{int(time.time())}@trafficdriver.ai"
+
+    # Threading: reply in the same conversation
+    if in_reply_to:
+        msg["In-Reply-To"] = in_reply_to
+        msg["References"] = in_reply_to
 
     msg.attach(MIMEText(plain_body, "plain", "utf-8"))
     if html_body:
@@ -258,7 +271,7 @@ def send_lead_notification(contact, reply_body, reply_subject, last_sent_body, l
     return send_smtp(GROWTH_EMAIL, "Growth", subject, plain_body, html_body)
 
 
-def generate_auto_reply(contact, original_reply_text):
+def generate_auto_reply(contact, original_reply_text, original_subject):
     """Generate Gabby's conversational auto-reply."""
     fn = contact["first_name"] or "there"
     dealer = contact["dealership_name"] or "your store"
@@ -271,21 +284,27 @@ What's your schedule look like next week?
 
 Gabby"""
 
-    return "Re: your reply", body
+    # Use Re: prefix with original subject
+    subj = original_subject
+    if subj and not subj.lower().startswith("re:"):
+        subj = f"Re: {subj}"
+
+    return subj or "Re: your reply", body
 
 
-def send_auto_reply(contact, subject, body, dry_run=False):
-    """Send Gabby's auto-reply back to the contact."""
+def send_auto_reply(contact, subject, body, dry_run=False, original_msg_id=None):
+    """Send Gabby's auto-reply back to the contact, threaded in the same conversation."""
     plain = body + "\n\n" + SIGNATURE_PLAIN
+    html = "<pre style='white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#333;margin:0;'>" + body + "</pre><br>" + SIGNATURE_HTML
 
     if dry_run:
         print(f"  [DRY RUN] Auto-reply would go to {contact['email']}")
         return "dry-run-auto"
 
-    return send_smtp(contact["email"], contact["first_name"], subject, plain)
+    return send_smtp(contact["email"], contact["first_name"], subject, plain, html, in_reply_to=original_msg_id)
 
 
-def process_reply(from_email, reply_subject, reply_body, dry_run=False):
+def process_reply(from_email, reply_subject, reply_body, dry_run=False, original_msg_id=None):
     """Process a single reply end-to-end."""
     print(f"\nProcessing reply from {from_email}: \"{reply_subject}\"")
 
@@ -320,8 +339,8 @@ def process_reply(from_email, reply_subject, reply_body, dry_run=False):
         lead_sent = lead_id is not None
 
         # Generate and send auto-reply
-        reply_subj, reply_body_text = generate_auto_reply(contact, reply_body)
-        auto_id = send_auto_reply(contact, reply_subj, reply_body_text, dry_run)
+        reply_subj, reply_body_text = generate_auto_reply(contact, reply_body, reply_subject)
+        auto_id = send_auto_reply(contact, reply_subj, reply_body_text, dry_run, original_msg_id=original_msg_id)
         auto_sent = auto_id is not None
 
         # Update contact
@@ -441,6 +460,9 @@ def main():
             # Extract subject
             msg_subject = decode_mime_header(msg["Subject"])
 
+            # Extract Message-ID for threading
+            original_msg_id = decode_mime_header(msg.get("Message-ID", "")).strip()
+
             # Extract body
             body_text = get_body_text(msg)
             if not body_text:
@@ -449,7 +471,7 @@ def main():
             # Truncate for logging
             body_preview = body_text[:500]
 
-            process_reply(from_email, msg_subject, body_text, args.dry_run)
+            process_reply(from_email, msg_subject, body_text, args.dry_run, original_msg_id=original_msg_id)
             processed += 1
 
             if args.mark_read and not args.dry_run:
