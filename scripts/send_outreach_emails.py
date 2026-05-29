@@ -26,7 +26,7 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timezone
 
 # ── Config ──────────────────────────────────────────────
-DB_URL = os.environ.get("DATABASE_URL", "")
+DB_URL = os.environ.get("SALES_CRM_DB_URL", os.environ.get("DATABASE_URL", ""))
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465

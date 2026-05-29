@@ -30,7 +30,7 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timezone, timedelta
 
 # ── Config ──────────────────────────────────────────────
-DB_URL = os.environ.get("DATABASE_URL", "")
+DB_URL = os.environ.get("SALES_CRM_DB_URL", os.environ.get("DATABASE_URL", ""))
 
 IMAP_HOST = "imap.gmail.com"
 IMAP_PORT = 993

@@ -4,20 +4,20 @@ Plain-text, 1:1 conversational email outreach from Gabby Pals to dealership Gene
 
 ## How It Works
 
-1. **Seed contacts** from your CRM into `peer_outreach_contacts`
+1. **Seed contacts** from the clients DB (`sales_contacts` + `sales_companies`) into `peer_outreach_contacts` in sales_crm DB
 2. **Send emails** — queries contacts due today, fills templates, sends via Gmail SMTP
 3. **Process replies** — polls Gabby's inbox, classifies intent, routes leads
 
 ### 5-Week Cadence
 
-| Week | Action |
-|------|--------|
-| 1 | Email 1 — Intro + service overview |
-| 2 | Email 2 — Equity mining angle |
-| 3 | Email 3 — BDC support / spread thin |
-| 4 | Email 4 — Social proof / final nudge |
-| 5 | Cooldown — no emails |
-| → | Restart at Week 1 |
+| Week | Subject | Action |
+|------|---------|--------|
+| 1 | real people, real phones, real results | Intro + service overview |
+| 2 | quick follow up | Equity mining angle |
+| 3 | spread thin? | BDC support / spread thin |
+| 4 | last one from me | Social proof / final nudge |
+| 5 | — | Cooldown — no emails |
+| → | — | Restart at Week 1 |
 
 ### Reply Handling
 
@@ -28,22 +28,31 @@ Plain-text, 1:1 conversational email outreach from Gabby Pals to dealership Gene
 | ooo | Log, retry next cycle |
 | bounce | Mark invalid, suppress |
 
+## Database Architecture
+
+Two separate PostgreSQL databases:
+
+| Database | Purpose | Key Tables |
+|----------|---------|------------|
+| **clients** | Source of contacts (scraped dealership data) | `sales_companies`, `sales_contacts` |
+| **sales_crm** | Peer outreach activity tracking | `peer_outreach_contacts`, `peer_outreach_log`, `peer_outreach_replies` |
+
 ## Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/seed_contacts.py` | Import GMs from CRM into peer_outreach_contacts |
-| `scripts/send_outreach_emails.py` | Send today's batch of outreach emails |
-| `scripts/process_replies.py` | Poll inbox for replies, classify, route leads |
+| Script | Reads From | Writes To |
+|--------|-----------|-----------|
+| `scripts/seed_contacts.py` | clients DB | sales_crm DB |
+| `scripts/send_outreach_emails.py` | sales_crm DB | sales_crm DB |
+| `scripts/process_replies.py` | sales_crm DB | sales_crm DB |
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt
 cp .env.example .env
-# Edit .env with your credentials
+# Edit .env with your database URLs and Gmail credentials
 
-# Seed contacts from CRM
+# Seed contacts from clients DB
 python3 scripts/seed_contacts.py --dry-run
 python3 scripts/seed_contacts.py
 
@@ -60,14 +69,11 @@ python3 scripts/process_replies.py
 
 | Variable | Description |
 |----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string for peer_outreach_contacts DB |
-| `MAIN_CRM_DATABASE_URL` | (Optional) Source CRM database for seeding contacts |
+| `SALES_CRM_DB_URL` | PostgreSQL connection for sales_crm (activity tracking) |
+| `CLIENTS_DB_URL` | PostgreSQL connection for clients (contact source) |
+| `DATABASE_URL` | Fallback if SALES_CRM_DB_URL not set |
 | `SMTP_PASSWORD` | Gmail app password for gabby@trafficdriver.ai |
 | `IMAP_PASSWORD` | Gmail app password for gabby@trafficdriver.ai (same as SMTP) |
-
-## Database
-
-PostgreSQL. See `references/database.md` for full schema — tables for contacts, send log, and reply tracking.
 
 ## References
 
