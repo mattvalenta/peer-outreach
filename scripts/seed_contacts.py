@@ -50,7 +50,7 @@ def fetch_gms_from_clients(limit=None):
         JOIN sales_companies co ON c.company_id = co.id
         WHERE c.email_1 IS NOT NULL
           AND c.email_1 != ''
-          AND c.title ILIKE '%general manager%'
+          AND c.title_category IN ('General Manager', 'Owner')
         ORDER BY c.created_at
     """
     if limit:
