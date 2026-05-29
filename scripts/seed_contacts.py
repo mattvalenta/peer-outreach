@@ -5,6 +5,7 @@ Filters for General Managers with valid emails, not suppressed.
 Usage:
   python3 seed_contacts.py --dry-run          # Preview what would be imported
   python3 seed_contacts.py                     # Import for real
+  python3 seed_contacts.py --limit 50          # Import max 50 contacts
 """
 
 import os
@@ -14,57 +15,42 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 # ── Config ──────────────────────────────────────────────
-# Main CRM database (read-only — data lives here)
-MAIN_DB_URL = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--main-db" else None
-
-# Target sales_crm database (where peer outreach tables live)
-TARGET_DB_URL = os.environ.get("DATABASE_URL", "")
+DB_URL = os.environ.get("DATABASE_URL", "")
 
 
-def get_main_db():
-    """Connect to the main CRM database. Override URL via --main-db flag."""
-    if MAIN_DB_URL:
-        return psycopg2.connect(MAIN_DB_URL, cursor_factory=RealDictCursor)
-    # Default — you'll update this to your actual CRM connection
-    url = os.environ.get("MAIN_CRM_DATABASE_URL", TARGET_DB_URL)
-    return psycopg2.connect(url, cursor_factory=RealDictCursor)
+def get_db():
+    return psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
 
 
-def get_target_db():
-    return psycopg2.connect(TARGET_DB_URL, cursor_factory=RealDictCursor)
-
-
-def fetch_gms_from_crm():
-    """Pull GMs from the main CRM. UPDATE THIS QUERY to match your actual schema."""
-    conn = get_main_db()
+def fetch_gms_from_crm(limit=None):
+    """Pull GMs from the existing prospect tables in the same database."""
+    conn = get_db()
     cur = conn.cursor()
 
-    # Query the main CRM's contact tables.
-    # Adjust table/column names to match your actual CRM schema.
-    cur.execute("""
+    query = """
         SELECT
+            c.id AS source_contact_id,
             c.first_name,
             c.last_name,
             c.email,
-            c.role,
-            d.name AS dealership_name,
-            d.brand AS dealership_brand,
-            d.city AS dealership_city,
-            d.state AS dealership_state,
-            c.phone,
-            c.id AS source_contact_id
+            c.job_title AS role,
+            d.company_name AS dealership_name,
+            d.domain AS dealership_domain,
+            CASE WHEN c.phone_numbers IS NOT NULL AND jsonb_array_length(c.phone_numbers) > 0
+                 THEN c.phone_numbers->>0 ELSE NULL END AS phone
         FROM prospect_dealership_contacts c
-        JOIN prospect_dealerships d ON c.prospect_dealership_id = d.id
-        LEFT JOIN email_validations ev ON ev.email = c.email
+        JOIN prospect_dealerships d ON c.dealership_id = d.id
         WHERE c.email IS NOT NULL
           AND c.email != ''
-          AND c.role ILIKE '%general manager%'
-          AND (ev.is_valid IS NULL OR ev.is_valid = TRUE)
-          AND (ev.is_unsubscribed IS NULL OR ev.is_unsubscribed = FALSE)
-          AND c.is_unsubscribed IS NOT TRUE
+          AND c.is_active = true
+          AND c.is_unsubscribed = false
+          AND c.job_title ILIKE '%general manager%'
         ORDER BY c.id
-    """)
+    """
+    if limit:
+        query += f" LIMIT {int(limit)}"
 
+    cur.execute(query)
     contacts = cur.fetchall()
     cur.close()
     conn.close()
@@ -73,7 +59,7 @@ def fetch_gms_from_crm():
 
 def import_contacts(contacts, dry_run=False):
     """Insert contacts into peer_outreach_contacts, skipping duplicates."""
-    conn = get_target_db()
+    conn = get_db()
     cur = conn.cursor()
 
     imported = 0
@@ -81,28 +67,27 @@ def import_contacts(contacts, dry_run=False):
 
     for c in contacts:
         # Check if already imported
-        cur.execute("SELECT id FROM peer_outreach_contacts WHERE source_contact_id = %s AND email = %s",
-                    (c["source_contact_id"], c["email"]))
+        cur.execute(
+            "SELECT id FROM peer_outreach_contacts WHERE source_contact_id = %s AND email = %s",
+            (c["source_contact_id"], c["email"])
+        )
         if cur.fetchone():
             skipped += 1
             continue
 
         if dry_run:
-            print(f"  [DRY RUN] {c['first_name']} {c['last_name']} — {c['dealership_name']} ({c['dealership_brand']})")
+            print(f"  [DRY RUN] {c['first_name']} {c['last_name']} — {c['dealership_name']} ({c['email']})")
             imported += 1
             continue
 
         cur.execute("""
             INSERT INTO peer_outreach_contacts (
-                first_name, last_name, email, role, dealership_name,
-                dealership_brand, dealership_city, dealership_state,
-                phone, source_contact_id, status, outreach_week
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', 1)
+                source_contact_id, first_name, last_name, email, role,
+                dealership_name, phone, status, outreach_week
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'active', 1)
         """, (
-            c["first_name"], c["last_name"], c["email"], c["role"],
-            c["dealership_name"], c["dealership_brand"],
-            c["dealership_city"], c["dealership_state"],
-            c["phone"], c["source_contact_id"]
+            c["source_contact_id"], c["first_name"], c["last_name"],
+            c["email"], c["role"], c["dealership_name"], c["phone"]
         ))
         imported += 1
 
@@ -116,20 +101,15 @@ def import_contacts(contacts, dry_run=False):
 def main():
     parser = argparse.ArgumentParser(description="Seed peer outreach contacts from CRM")
     parser.add_argument("--dry-run", action="store_true", help="Preview without importing")
-    parser.add_argument("--main-db", type=str, help="Main CRM database URL (override default)")
+    parser.add_argument("--limit", type=int, help="Max contacts to import")
     args = parser.parse_args()
 
-    # Override main DB if provided
-    global MAIN_DB_URL
-    if args.main_db:
-        MAIN_DB_URL = args.main_db
-
-    print("Fetching GMs from CRM...")
-    contacts = fetch_gms_from_crm()
+    print("Fetching GMs from prospect tables...")
+    contacts = fetch_gms_from_crm(limit=args.limit)
     print(f"Found {len(contacts)} GMs with valid emails")
 
     if not contacts:
-        print("No contacts found. Check your CRM query.")
+        print("No contacts found.")
         return
 
     print("Importing to peer_outreach_contacts...")

@@ -31,7 +31,7 @@ DB_URL = os.environ.get("DATABASE_URL", "")
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465
 SMTP_EMAIL = "gabby@trafficdriver.ai"
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", os.environ.get("IMAP_PASSWORD", ""))
 
 FROM_EMAIL = "gabby@trafficdriver.ai"
 FROM_NAME = "Gabby Pals"
