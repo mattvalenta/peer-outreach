@@ -280,9 +280,7 @@ def generate_auto_reply(contact, original_reply_text, original_subject):
 
 Thanks for getting back to me. I'd love to set up a quick call to walk through what this could look like for {dealer}. No rush, just whenever works on your end.
 
-What's your schedule look like next week?
-
-Gabby"""
+What's your schedule look like next week?"""
 
     # Use Re: prefix with original subject
     subj = original_subject
