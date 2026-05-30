@@ -350,9 +350,9 @@ def process_reply(from_email, reply_subject, reply_body, dry_run=False, original
 
         # Log reply
         cur.execute("""
-            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent, lead_notification_sent, auto_reply_sent)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (contact["id"], from_email, reply_subject, reply_body, intent, lead_sent, auto_sent))
+            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent, lead_notification_sent, auto_reply_sent, message_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (contact["id"], from_email, reply_subject, reply_body, intent, lead_sent, auto_sent, original_msg_id))
 
         print(f"  ✓ Lead notification: {'sent' if lead_sent else 'failed'}")
         print(f"  ✓ Auto-reply: {'sent' if auto_sent else 'failed'}")
@@ -365,9 +365,9 @@ def process_reply(from_email, reply_subject, reply_body, dry_run=False, original
         """, (contact["id"],))
 
         cur.execute("""
-            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (contact["id"], from_email, reply_subject, reply_body, intent))
+            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent, message_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (contact["id"], from_email, reply_subject, reply_body, intent, original_msg_id))
 
         print(f"  ✓ Marked suppressed")
 
@@ -379,9 +379,9 @@ def process_reply(from_email, reply_subject, reply_body, dry_run=False, original
         """, (contact["id"],))
 
         cur.execute("""
-            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (contact["id"], from_email, reply_subject, reply_body, intent))
+            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent, message_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (contact["id"], from_email, reply_subject, reply_body, intent, original_msg_id))
 
         print(f"  ✓ Logged OOO — will retry next cycle")
 
@@ -393,9 +393,9 @@ def process_reply(from_email, reply_subject, reply_body, dry_run=False, original
         """, (contact["id"],))
 
         cur.execute("""
-            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (contact["id"], from_email, reply_subject, reply_body, intent))
+            INSERT INTO peer_outreach_replies (contact_id, from_email, subject, body_text, intent, message_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (contact["id"], from_email, reply_subject, reply_body, intent, original_msg_id))
 
         print(f"  ✓ Marked as bounce — suppressed")
 
@@ -407,7 +407,6 @@ def process_reply(from_email, reply_subject, reply_body, dry_run=False, original
 def main():
     parser = argparse.ArgumentParser(description="Process peer outreach replies via Gmail IMAP")
     parser.add_argument("--dry-run", action="store_true", help="Preview without sending")
-    parser.add_argument("--mark-read", action="store_true", help="Mark processed emails as read in inbox")
     args = parser.parse_args()
 
     print("Connecting to Gmail IMAP...")
@@ -416,22 +415,12 @@ def main():
     mail.login(IMAP_EMAIL, IMAP_PASSWORD)
     mail.select("inbox")
 
-    # Search for unseen messages
+    # Search for unseen messages only
     _, messages = mail.search(None, "UNSEEN")
     msg_nums = messages[0].split()
-
-    # Also catch replies that were moved from spam (may already be marked read)
-    _, recent = mail.search(None, "SINCE", (datetime.now() - timedelta(hours=1)).strftime("%d-%b-%Y"))
-    recent_nums = recent[0].split()
-    
-    # Merge and deduplicate
-    all_nums = list(set(msg_nums + recent_nums))
-    all_nums.sort()
     
     print(f"Unread messages: {len(msg_nums)}")
-    print(f"Recent (last hour, including read): {len(recent_nums)}")
-    print(f"Total to check: {len(all_nums)}")
-    msg_nums = all_nums
+    msg_nums = msg_nums
 
     if not msg_nums:
         print("No new replies to process.")
@@ -461,6 +450,22 @@ def main():
             # Extract Message-ID for threading
             original_msg_id = decode_mime_header(msg.get("Message-ID", "")).strip()
 
+            # Skip if already processed (check message_id in replies table)
+            if original_msg_id:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("SELECT id FROM peer_outreach_replies WHERE message_id = %s", (original_msg_id,))
+                if cur.fetchone():
+                    print(f"  Already processed: {from_email} (msg {original_msg_id[:40]}), skipping")
+                    cur.close()
+                    conn.close()
+                    # Still mark as read
+                    if not args.dry_run:
+                        mail.store(num, "+FLAGS", "\\Seen")
+                    continue
+                cur.close()
+                conn.close()
+
             # Extract body
             body_text = get_body_text(msg)
             if not body_text:
@@ -472,7 +477,8 @@ def main():
             process_reply(from_email, msg_subject, body_text, args.dry_run, original_msg_id=original_msg_id)
             processed += 1
 
-            if args.mark_read and not args.dry_run:
+            # Always mark as read after processing
+            if not args.dry_run:
                 mail.store(num, "+FLAGS", "\\Seen")
 
     mail.close()
