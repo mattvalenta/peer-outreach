@@ -1,11 +1,11 @@
 ---
 name: peer-outreach
-description: "Manages the peer-to-peer plain-text email outreach system for TrafficDriver.ai. Dual-sender: Gabby (gabby@trafficdriver.ai) sends weekly emails, then Alex (auto@paramountals.net) sends follow-ups 2 days later to non-bounced contacts. 5-week cadence (4 weekly + 1 cooldown). Use when Matt asks to run, build, or modify the peer outreach system, send outreach emails, or handle replies. Covers email generation, Gmail SMTP sending, reply classification, and lead routing to growth@paramountals.com."
+description: "Manages the peer-to-peer plain-text email outreach system for TrafficDriver.ai. Dual-sender: Gabby sends weekly emails from gabby@trafficdriver.ai, then resends the same emails 2 days later from auto@paramountals.net to contacts that didn't bounce. Same sender name, same templates, different address to protect deliverability. 5-week cadence (4 weekly + 1 cooldown). Use when Matt asks to run, build, or modify the peer outreach system, send outreach emails, or handle replies."
 ---
 
 # Peer-to-Peer Outreach System
 
-Dual-sender plain-text email outreach to dealership GMs. Gabby sends the primary weekly emails; Alex sends follow-ups 2 days later to contacts that didn't bounce.
+Dual-address plain-text email outreach to dealership GMs. Gabby sends weekly emails from her primary address, then resends the same email from a second address 2 days later to contacts that didn't bounce. The primary address cleans the list; the second address hits the clean contacts.
 
 ## Hosting & Source of Truth
 
@@ -15,47 +15,44 @@ Dual-sender plain-text email outreach to dealership GMs. Gabby sends the primary
 
 ## Senders
 
-| Sender | Email | Role | SMTP |
-|--------|-------|------|------|
-| **Gabby Pals** | gabby@trafficdriver.ai | Primary weekly emails (weeks 1-4) | Gmail SMTP (port 465, SSL) |
-| **Alex Martin** | auto@paramountals.net | Follow-up emails (2 days after Gabby) | Gmail SMTP (port 465, SSL) |
+| Address | Sender Name | Role | SMTP |
+|---------|-------------|------|------|
+| gabby@trafficdriver.ai | Gabby Pals | Primary send (week 0) | Gmail SMTP |
+| auto@paramountals.net | Gabby Pals | Follow-up resend (week +2 days) | Gmail SMTP |
 
-- Gabby's domain: `trafficdriver.ai`
-- Alex's domain: `paramountals.net` (separate domain = separate reputation)
-- Both log to `peer_outreach_log`. Follow-ups prefixed with `[Follow-up]` in subject column.
-- **Signature:** Gabby uses `assets/signature.html`, Alex uses `assets/followup-signature.html`
+Both emails show **Gabby Pals** as the sender. Same signature, same templates. The recipient sees the same person — only the email address changes.
 
 ## Quick Reference
 
 | Detail | Value |
 |--------|-------|
-| Gabby sends/day | 100 |
-| Follow-ups/day | 100 (contacts that received Gabby's email 2+ days ago, no bounce) |
+| Gabby primary sends/day | 100 |
+| Follow-up resends/day | 100 (contacts that received Gabby's email 2+ days ago, no bounce) |
 | Cadence | 4 weeks on, 1 week cooldown |
-| Follow-up delay | 2 days after Gabby's send (configurable via `--delay-days`) |
+| Follow-up delay | 2 days after primary send (configurable via `--delay-days`) |
 | Target | GMs only (valid emails, not suppressed) |
 | Format | Plain text body + HTML signature |
 | Reply routing | Intent → `growth@paramountals.com` lead notification |
 
 ## Daily Workflow
 
-### Step 1: Gabby sends weekly emails
+### Step 1: Gabby sends primary emails
 ```bash
 python3 scripts/send_outreach_emails.py            # Send for real
 python3 scripts/send_outreach_emails.py --dry-run   # Preview
 python3 scripts/send_outreach_emails.py --limit 10  # Cap at 10
 ```
-Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `SMTP_PASSWORD` (gabby's app password)
+Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `SMTP_PASSWORD`
 
-### Step 2: Alex sends follow-ups (run daily, after Gabby's sends have aged 2+ days)
+### Step 2: Gabby resends from second address (run daily, 2+ days after Step 1)
 ```bash
 python3 scripts/send_followup_emails.py              # Send for real
 python3 scripts/send_followup_emails.py --dry-run    # Preview
 python3 scripts/send_followup_emails.py --delay-days 3  # Wait 3 days instead of 2
 ```
-Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `FOLLOWUP_SMTP_PASSWORD` (auto@paramountals.net app password)
+Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `FOLLOWUP_SMTP_PASSWORD`
 
-### Step 3: Process replies (from both senders — replies come to Gabby's inbox)
+### Step 3: Process replies (replies come to gabby@trafficdriver.ai inbox)
 ```bash
 python3 scripts/process_replies.py              # Process unread replies
 python3 scripts/process_replies.py --dry-run    # Preview only
@@ -65,25 +62,24 @@ Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `SMTP_PASSWORD`, `IMAP_PASSWOR
 
 ## 5-Week Cadence
 
-| Week | Gabby Email | Alex Follow-Up |
-|------|-------------|----------------|
-| 1 | Intro + services list | "Quick question about your leads" (after-hours angle) |
-| 2 | Equity mining angle | "Sitting on a goldmine" (service lane equity) |
-| 3 | Spread thin / BDC support | "What if your team had backup?" (overflow support) |
-| 4 | Testimonial / referral | "What 90 days looks like" (real numbers) |
-| 5 | Cooldown — no emails | No follow-ups either |
+| Week | Primary Send (Day 0) | Follow-Up Resend (Day 2) |
+|------|---------------------|--------------------------|
+| 1 | Intro + services list | Same email, different address |
+| 2 | Equity mining angle | Same email, different address |
+| 3 | Spread thin / BDC support | Same email, different address |
+| 4 | Testimonial / referral | Same email, different address |
+| 5 | Cooldown — no emails | No resends either |
 
+Full templates: `references/email-templates.md`
 Full cadence: `references/cadence.md`
-Gabby templates: `references/email-templates.md`
-Alex follow-up templates: `references/followup-templates.md`
 
-## How Follow-Ups Work
+## How Follow-Up Resends Work
 
-1. Gabby sends weekly email → `last_sent_at` updated, `outreach_week` advances
-2. Script queries contacts where Gabby sent 2+ days ago, no bounce, no follow-up yet
-3. Alex sends a **different** email (different content, different sender, different domain)
+1. Gabby sends weekly email from `gabby@trafficdriver.ai` → `last_sent_at` updated
+2. Script queries contacts where Gabby sent 2+ days ago, no bounce, no resend yet
+3. Same email (same template, same subject, same signature) sent from `auto@paramountals.net`
 4. `followup_sent_at` updated on contact, logged to `peer_outreach_log`
-5. If Gabby's email bounced (detected via reply classification), contact is suppressed → Alex skips them
+5. If Gabby's email bounced (detected via reply classification), contact is suppressed → resend skipped
 
 ## Database Migration
 
@@ -94,7 +90,7 @@ python3 scripts/add_followup_column.py --dry-run    # Preview only
 ```
 Adds `followup_sent_at TIMESTAMP` column + index to `peer_outreach_contacts`.
 
-## Environment Variables (set in GCP deployment)
+## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
@@ -102,7 +98,7 @@ Adds `followup_sent_at TIMESTAMP` column + index to `peer_outreach_contacts`.
 | `CLIENTS_DB_URL` | PostgreSQL connection for `clients` |
 | `DATABASE_URL` | Fallback if `SALES_CRM_DB_URL` not set |
 | `SMTP_PASSWORD` | Gmail app password for `gabby@trafficdriver.ai` |
-| `IMAP_PASSWORD` | Gmail app password for `gabby@trafficdriver.ai` (same as SMTP) |
+| `IMAP_PASSWORD` | Gmail app password for `gabby@trafficdriver.ai` |
 | `FOLLOWUP_SMTP_PASSWORD` | Gmail app password for `auto@paramountals.net` |
 
 ## Setup (on a fresh checkout)
@@ -116,6 +112,4 @@ cp .env.example .env
 # Run migration: python3 scripts/add_followup_column.py
 ```
 
-## Database Fields Required
-
-See `references/database.md` for full schema (`peer_outreach_*` tables in `sales_crm`).
+See `references/database.md` for full schema.

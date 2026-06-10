@@ -117,10 +117,10 @@ ORDER BY last_sent_at ASC NULLS FIRST
 LIMIT 100;
 ```
 
-## Follow-Up Send Query (auto@paramountals.net)
+## Follow-Up Resend Query (auto@paramountals.net)
 
-Contacts that received Gabby's email 2+ days ago, haven't bounced, and haven't
-received a follow-up for that specific Gabby send yet.
+Contacts that received Gabby's primary email 2+ days ago, haven't bounced, and haven't
+received a resend for that specific send yet.
 
 ```sql
 SELECT
@@ -147,12 +147,12 @@ LIMIT 100;
 
 ## Senders
 
-| Sender | Email | Purpose | SMTP |
-|--------|-------|---------|------|
-| Gabby Pals | gabby@trafficdriver.ai | Primary weekly emails (weeks 1-4) | Gmail SMTP |
-| Alex Martin | auto@paramountals.net | Follow-up emails (2 days after Gabby) | Gmail SMTP |
+| Address | Sender Name | Purpose | SMTP |
+|---------|-------------|---------|------|
+| gabby@trafficdriver.ai | Gabby Pals | Primary weekly emails | Gmail SMTP |
+| auto@paramountals.net | Gabby Pals | Follow-up resends (2 days after primary) | Gmail SMTP |
 
-Both log to `peer_outreach_log`. Follow-ups are prefixed with `[Follow-up]` in the subject column.
+Same sender name and templates on both. Only the email address changes. Both log to `peer_outreach_log`.
 
 ## Seed Query (from clients DB)
 

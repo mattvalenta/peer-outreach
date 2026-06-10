@@ -1,14 +1,15 @@
 """
 Peer Outreach — Follow-Up Email Sender (auto@paramountals.net)
 
-Sends follow-up emails from a secondary sender to contacts that received
-Gabby's email without bouncing. Complements Gabby's weekly emails with
-different content from a different sender on a different domain.
+Resends the SAME weekly email from a second address to contacts that didn't
+bounce from Gabby's primary send. Same sender name (Gabby Pals), same
+templates, different email address. Gabby's address cleans the list; this
+address hits the clean contacts.
 
 Flow:
-  1. Gabby sends weekly email (send_outreach_emails.py)
-  2. 2 days later, this script sends a follow-up to non-bounced contacts
-  3. Both use the same cadence (week 1-4), but different templates
+  1. Gabby sends weekly email from gabby@trafficdriver.ai (send_outreach_emails.py)
+  2. 2 days later, this script resends the same week's email from auto@paramountals.net
+  3. Only sends to contacts where Gabby's email didn't bounce
 
 Usage:
   python3 send_followup_emails.py --dry-run     # Preview without sending
@@ -40,80 +41,91 @@ SMTP_EMAIL = os.environ.get("FOLLOWUP_SMTP_EMAIL", "auto@paramountals.net")
 SMTP_PASSWORD = os.environ.get("FOLLOWUP_SMTP_PASSWORD", "")
 
 FROM_EMAIL = SMTP_EMAIL
-FROM_NAME = "Alex Martin"
+FROM_NAME = "Gabby Pals"
 
 DAILY_LIMIT = 100
 DEFAULT_DELAY_DAYS = 2
 MIN_DELAY_SEC = 120  # 2 min
 MAX_DELAY_SEC = 300  # 5 min
 
-# ── Signature ───────────────────────────────────────────
+# ── Signature (same as Gabby's primary send) ────────────
 SIGNATURE_HTML = """<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; color: #333333; line-height: 1.5;">
-  <strong style="color: #1a1a1a;">Alex Martin</strong><br>
+  <strong style="color: #1a1a1a;">Gabby Pals</strong><br>
   <span style="color: #666666;">Solutions Consultant</span><br><br>
-  <a href="https://paramountals.com/" style="color: #2b6cb0; text-decoration: underline;">Paramount Lead Solutions</a><br><br>
+  <a href="https://paramountals.com/" style="color: #2b6cb0; text-decoration: underline;">Paramount Lead Solutions</a><br>
+  <a href="https://trafficdriver.ai/" style="color: #2b6cb0; text-decoration: underline;">TrafficDriver.ai</a><br><br>
   <a href="tel:8006435084" style="color: #2b6cb0; text-decoration: none;">800-643-5084</a>
 </div>"""
 
-SIGNATURE_PLAIN = """Alex Martin
+SIGNATURE_PLAIN = """Gabby Pals
 Solutions Consultant
 Paramount Lead Solutions — https://paramountals.com/
+TrafficDriver.ai — https://trafficdriver.ai/
 800-643-5084"""
 
-# ── Follow-Up Templates (mapped to Gabby's send week) ──
+# ── Email Templates (same as send_outreach_emails.py) ───
 
-FOLLOWUP_TEMPLATES = {
+EMAIL_TEMPLATES = {
     1: {
         "subjects": [
-            "quick question about your leads",
-            "your internet leads — who's following up?"
+            "different kind of dealership support",
+            "real people, real phones, real results",
+            "not software — actual humans doing the work"
         ],
         "body": """Hi {first_name},
 
-Quick question — when an internet lead comes in after hours, who's following up? Most dealers tell us it sits until morning. By then the customer's already talking to someone else.
+I know your inbox is full of software demos and marketing pitches. We're not one of those.
 
-We have a team that picks up those leads around the clock. Real people, not a bot. They respond within minutes, not hours.
+We're a team of real sales people who pick up the phones, convert your leads, follow up with customers, and take the calls your staff doesn't have time for. If AI makes sense for your budget we layer that in too. But either way, the work gets done.
 
-Worth a 5 minute call?"""
+Here's what we handle:
+
+• Sales BDC — humans on your inbound leads (phone, text, email). We follow every lead for 90 days, cradle to grave.
+• Service BDC — people taking your service calls, upselling appointments, running outbound retention campaigns
+• Equity Mining — a team calling your previous customers and showing them why now's the time to buy
+• AI Virtual Receptionist — AI answering inbound sales and service calls around the clock
+• AI Internet Lead Follow-Up — AI on internet lead outreach and follow-up (text, email, phone)
+
+Everything's a la carte. You pick what you need. Everyone works out of our Chicagoland office — not remote, not overseas.
+
+Worth a conversation?"""
     },
     2: {
         "subjects": [
-            "sitting on a goldmine",
-            "your past customers are buying — just not from you"
+            "quick follow up",
+            "following up"
         ],
         "body": """Hi {first_name},
 
-Your service lane sees customers every day who are in equity positions. They're driving cars worth more than they owe. Most dealers know this but don't have the people to call them.
+Following up on my email from last week. 90% of dealerships have at least one gap in their lead process. Most fill those gaps with us instead of expanding their internal teams.
 
-We do. Our team runs equity mining campaigns to your service customers and sold leads. We make the calls, set the appointments, and your sales team closes.
+Here's one we see a lot: a dealer paying $4,000+ a month for equity mining software, but nobody's actually calling the customers. They cancel the software, use that budget for real people doing real equity mining work, and the ROI flips fast.
 
-Want to see what that looks like?"""
+If any of this sounds familiar, let me know."""
     },
     3: {
         "subjects": [
-            "what if your team had backup?",
-            "your BDC doesn't have to do everything"
+            "spread thin?",
+            "quick thought"
         ],
         "body": """Hi {first_name},
 
-A lot of BDC teams we talk to are running lean. They're handling inbound, outbound, service, and internet leads — all at once. Something always falls through the cracks.
+Some of the dealerships we work with aren't missing a piece of the puzzle. They're just spread thin. Their team handles everything, but everything's a little backed up.
 
-We plug in behind your existing team and catch what they can't. No replacing anyone. Just extra hands on the keyboard and phones so nothing gets missed.
+That's where our BDC support packages come in. We work behind your existing team, helping convert older internet leads, running service-to-sales equity mining, and taking the overflow calls your people can't get to. Nothing replaces your crew. We just take the weight off so they can breathe.
 
-If that sounds familiar, let's chat."""
+If that sounds like your store, happy to talk through it."""
     },
     4: {
         "subjects": [
-            "what 90 days looks like",
-            "dealers we work with — real numbers"
+            "last one from me",
+            "dealers crushing it"
         ],
         "body": """Hi {first_name},
 
-One of our dealers went from 30% lead follow-up to 95% in their first month. Not because they hired more people — because they added our team behind the scenes.
+I'll keep this short since I've sent a few now. Just wanted to share that we've got dealers running with us who are now #1 in their region. Multiple stores. Not because they bought more software — because they finally had actual people working their leads.
 
-Same store, same leads, same budget. Just more hands doing the work.
-
-If you want to see the before and after, happy to walk you through it."""
+Happy to connect you with a couple of them if you want to hear it from someone who's been in your shoes. If not, no worries at all."""
     }
 }
 
@@ -124,7 +136,7 @@ def get_db():
 
 def get_contacts(delay_days=DEFAULT_DELAY_DAYS, limit=DAILY_LIMIT):
     """
-    Get contacts due for a follow-up email.
+    Get contacts due for a follow-up resend.
 
     Criteria:
     - Gabby sent them an email (exists in peer_outreach_log)
@@ -132,7 +144,6 @@ def get_contacts(delay_days=DEFAULT_DELAY_DAYS, limit=DAILY_LIMIT):
     - No follow-up has been sent for that specific Gabby send yet
       (followup_sent_at IS NULL or followup_sent_at < Gabby's last send)
     - Contact is still active (not suppressed, not in conversation)
-    - Not suppressed due to bounce
     """
     conn = get_db()
     cur = conn.cursor()
@@ -174,11 +185,11 @@ def get_contacts(delay_days=DEFAULT_DELAY_DAYS, limit=DAILY_LIMIT):
 
 
 def compose_email(contact):
-    """Fill the follow-up template matching Gabby's send week."""
+    """Fill the same template matching Gabby's send week."""
     gabby_week = contact["gabby_week"]
-    template = FOLLOWUP_TEMPLATES.get(gabby_week)
+    template = EMAIL_TEMPLATES.get(gabby_week)
     if not template:
-        print(f"  WARNING: No follow-up template for week {gabby_week}")
+        print(f"  WARNING: No template for week {gabby_week}")
         return None, None, None
 
     subject = random.choice(template["subjects"])
@@ -221,7 +232,6 @@ def send_email(contact, dry_run=False):
             server.sendmail(FROM_EMAIL, to_email, msg.as_string())
         return msg["Message-ID"], subject
     except smtplib.SMTPRecipientsRefused as e:
-        # Hard bounce — contact is invalid
         print(f"  BOUNCE (invalid address) for {to_email}: {e}")
         return None, subject
     except Exception as e:
@@ -233,7 +243,6 @@ def update_contact(conn, contact, msg_id, subject, plain_body, gabby_week):
     """Log the follow-up send and update followup_sent_at."""
     cur = conn.cursor()
 
-    # Update followup_sent_at on the contact
     cur.execute("""
         UPDATE peer_outreach_contacts
         SET followup_sent_at = NOW(),
@@ -241,34 +250,19 @@ def update_contact(conn, contact, msg_id, subject, plain_body, gabby_week):
         WHERE id = %s
     """, (contact["id"],))
 
-    # Log in peer_outreach_log with week matching Gabby's send
-    # (so we have a record of what was sent and when)
     cur.execute("""
         INSERT INTO peer_outreach_log
             (contact_id, email_sent_to, week, subject, sendgrid_message_id, body_text, status)
         VALUES (%s, %s, %s, %s, %s, %s, 'sent')
     """, (contact["id"], contact["email"], gabby_week,
-          f"[Follow-up] {subject}", msg_id, plain_body))
+          subject, msg_id, plain_body))
 
-    cur.close()
-
-
-def mark_bounced(conn, contact):
-    """Suppress a contact that hard-bounced on the follow-up send."""
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE peer_outreach_contacts
-        SET status = 'suppressed',
-            reply_intent = 'bounce',
-            updated_at = NOW()
-        WHERE id = %s
-    """, (contact["id"],))
     cur.close()
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Send follow-up emails via auto@paramountals.net"
+        description="Resend weekly emails from auto@paramountals.net to non-bounced contacts"
     )
     parser.add_argument("--dry-run", action="store_true", help="Preview without sending")
     parser.add_argument("--limit", type=int, default=DAILY_LIMIT, help="Max emails to send")
@@ -287,21 +281,20 @@ def main():
         sys.exit(1)
 
     contacts = get_contacts(delay_days=args.delay_days, limit=args.limit)
-    print(f"Contacts due for follow-up: {len(contacts)}")
+    print(f"Contacts due for follow-up resend: {len(contacts)}")
 
     if not contacts:
         print("No contacts due for follow-up today.")
         return
 
     sent = 0
-    bounced = 0
     conn = get_db()
 
     for i, contact in enumerate(contacts):
         first = contact["first_name"] or contact["email"]
         gabby_week = contact["gabby_week"]
         gabby_sent = contact["gabby_sent_at"].strftime("%Y-%m-%d") if contact["gabby_sent_at"] else "?"
-        print(f"\n[{i+1}/{len(contacts)}] Follow-up for week {gabby_week} (Gabby sent {gabby_sent})")
+        print(f"\n[{i+1}/{len(contacts)}] Week {gabby_week} resend (original sent {gabby_sent})")
         print(f"  To: {first} ({contact['email']})")
 
         msg_id, subject = send_email(contact, dry_run=args.dry_run)
@@ -311,12 +304,6 @@ def main():
             conn.commit()
             sent += 1
             print(f"  ✓ Sent: \"{subject}\" | ID: {msg_id}")
-        elif subject != "skipped":
-            # Check if it was a bounce (SMTPRecipientsRefused)
-            print(f"  ✗ Failed — checking if bounce...")
-            # We can't easily distinguish bounce vs temp failure here
-            # The bounce is already printed in send_email
-            conn.commit()
 
         # Random delay between sends
         remaining = len(contacts) - i - 1
@@ -328,7 +315,7 @@ def main():
             time.sleep(delay)
 
     conn.close()
-    print(f"\nDone. {sent}/{len(contacts)} follow-ups sent. {bounced} bounced.")
+    print(f"\nDone. {sent}/{len(contacts)} follow-up resends.")
 
 
 if __name__ == "__main__":
