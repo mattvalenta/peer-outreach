@@ -1,85 +1,121 @@
 ---
 name: peer-outreach
-description: "Manages the personal peer-to-peer plain-text email outreach system for TrafficDriver.ai. Sends 1:1 conversational emails from gabby@trafficdriver.ai to General Managers at dealerships using a 5-week cadence (4 weekly emails + 1 cooldown). Use when Matt asks to run, build, or modify the peer outreach system, send outreach emails, or handle replies. Covers email generation, SendGrid sending, reply classification, and lead routing to growth@paramountals.com."
+description: "Manages the peer-to-peer plain-text email outreach system for TrafficDriver.ai. Dual-sender: Gabby (gabby@trafficdriver.ai) sends weekly emails, then Alex (auto@paramountals.net) sends follow-ups 2 days later to non-bounced contacts. 5-week cadence (4 weekly + 1 cooldown). Use when Matt asks to run, build, or modify the peer outreach system, send outreach emails, or handle replies. Covers email generation, Gmail SMTP sending, reply classification, and lead routing to growth@paramountals.com."
 ---
 
 # Peer-to-Peer Outreach System
 
-Send plain-text, 1:1 conversational emails from Gabby to dealership GMs. 100 emails/day via SendGrid, cycling through the contact database on a 5-week loop.
+Dual-sender plain-text email outreach to dealership GMs. Gabby sends the primary weekly emails; Alex sends follow-ups 2 days later to contacts that didn't bounce.
 
-## Sender Identity
+## Hosting & Source of Truth
 
-- **Name:** Gabby Pals
-- **Email:** gabby@trafficdriver.ai
-- **Send service:** SendGrid API (trafficdriver.ai account)
-- **Signature:** See `assets/signature.html`
+- **GitHub:** https://github.com/mattvalenta/peer-outreach
+- **Hosting:** GCP (managed by dev manager)
+- **Source of truth:** GitHub repo — clone/pull to operate, don't edit local copies
+
+## Senders
+
+| Sender | Email | Role | SMTP |
+|--------|-------|------|------|
+| **Gabby Pals** | gabby@trafficdriver.ai | Primary weekly emails (weeks 1-4) | Gmail SMTP (port 465, SSL) |
+| **Alex Martin** | auto@paramountals.net | Follow-up emails (2 days after Gabby) | Gmail SMTP (port 465, SSL) |
+
+- Gabby's domain: `trafficdriver.ai`
+- Alex's domain: `paramountals.net` (separate domain = separate reputation)
+- Both log to `peer_outreach_log`. Follow-ups prefixed with `[Follow-up]` in subject column.
+- **Signature:** Gabby uses `assets/signature.html`, Alex uses `assets/followup-signature.html`
 
 ## Quick Reference
 
 | Detail | Value |
 |--------|-------|
-| Sends per day | 100 |
+| Gabby sends/day | 100 |
+| Follow-ups/day | 100 (contacts that received Gabby's email 2+ days ago, no bounce) |
 | Cadence | 4 weeks on, 1 week cooldown |
+| Follow-up delay | 2 days after Gabby's send (configurable via `--delay-days`) |
 | Target | GMs only (valid emails, not suppressed) |
 | Format | Plain text body + HTML signature |
 | Reply routing | Intent → `growth@paramountals.com` lead notification |
 
-## Core Workflow
+## Daily Workflow
 
-### 1. Contact Selection
+### Step 1: Gabby sends weekly emails
+```bash
+python3 scripts/send_outreach_emails.py            # Send for real
+python3 scripts/send_outreach_emails.py --dry-run   # Preview
+python3 scripts/send_outreach_emails.py --limit 10  # Cap at 10
+```
+Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `SMTP_PASSWORD` (gabby's app password)
 
-Contacts are stored in the `peer_outreach_contacts` table in the `sales_crm` database.
+### Step 2: Alex sends follow-ups (run daily, after Gabby's sends have aged 2+ days)
+```bash
+python3 scripts/send_followup_emails.py              # Send for real
+python3 scripts/send_followup_emails.py --dry-run    # Preview
+python3 scripts/send_followup_emails.py --delay-days 3  # Wait 3 days instead of 2
+```
+Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `FOLLOWUP_SMTP_PASSWORD` (auto@paramountals.net app password)
 
-Run `scripts/seed_contacts.py` to initially populate this table from the main CRM, filtering for GMs with valid emails.
+### Step 3: Process replies (from both senders — replies come to Gabby's inbox)
+```bash
+python3 scripts/process_replies.py              # Process unread replies
+python3 scripts/process_replies.py --dry-run    # Preview only
+python3 scripts/process_replies.py --mark-read  # Mark as read after processing
+```
+Requires: `SALES_CRM_DB_URL` (or `DATABASE_URL`), `SMTP_PASSWORD`, `IMAP_PASSWORD`
 
-For daily sends, run `scripts/send_outreach_emails.py` which queries contacts due today automatically.
+## 5-Week Cadence
 
-### 2. Email Composition
+| Week | Gabby Email | Alex Follow-Up |
+|------|-------------|----------------|
+| 1 | Intro + services list | "Quick question about your leads" (after-hours angle) |
+| 2 | Equity mining angle | "Sitting on a goldmine" (service lane equity) |
+| 3 | Spread thin / BDC support | "What if your team had backup?" (overflow support) |
+| 4 | Testimonial / referral | "What 90 days looks like" (real numbers) |
+| 5 | Cooldown — no emails | No follow-ups either |
 
-No per-contact AI research needed. Each week's email is static copy with `{first_name}` as the only merge field. The audience is specific (dealership GMs) so the messaging fits universally. See `references/email-templates.md` for full templates.
+Full cadence: `references/cadence.md`
+Gabby templates: `references/email-templates.md`
+Alex follow-up templates: `references/followup-templates.md`
 
-Format: Multipart email — plain text body + HTML signature from `assets/signature.html`.
+## How Follow-Ups Work
 
-### 3. Sending via SendGrid
+1. Gabby sends weekly email → `last_sent_at` updated, `outreach_week` advances
+2. Script queries contacts where Gabby sent 2+ days ago, no bounce, no follow-up yet
+3. Alex sends a **different** email (different content, different sender, different domain)
+4. `followup_sent_at` updated on contact, logged to `peer_outreach_log`
+5. If Gabby's email bounced (detected via reply classification), contact is suppressed → Alex skips them
 
-Run `python3 scripts/send_outreach_emails.py` to send today's batch.
+## Database Migration
 
-- `--dry-run` previews without sending
-- `--limit N` caps the batch size
-- Requires `SENDGRID_API_KEY_TD` environment variable
+When deploying for the first time with follow-up support:
+```bash
+python3 scripts/add_followup_column.py              # Apply migration
+python3 scripts/add_followup_column.py --dry-run    # Preview only
+```
+Adds `followup_sent_at TIMESTAMP` column + index to `peer_outreach_contacts`.
 
-Sends 100 emails/day through SendGrid API. Throttles with randomized 2-5 minute gaps. Spreads across 4-6 hours.
+## Environment Variables (set in GCP deployment)
 
-### 4. 5-Week Cadence
+| Variable | Description |
+|----------|-------------|
+| `SALES_CRM_DB_URL` | PostgreSQL connection for `sales_crm` |
+| `CLIENTS_DB_URL` | PostgreSQL connection for `clients` |
+| `DATABASE_URL` | Fallback if `SALES_CRM_DB_URL` not set |
+| `SMTP_PASSWORD` | Gmail app password for `gabby@trafficdriver.ai` |
+| `IMAP_PASSWORD` | Gmail app password for `gabby@trafficdriver.ai` (same as SMTP) |
+| `FOLLOWUP_SMTP_PASSWORD` | Gmail app password for `auto@paramountals.net` |
 
-| Week | Action |
-|------|--------|
-| 1 | Email 1 — Intro + personalized observation |
-| 2 | Email 2 — Different angle / new pain point |
-| 3 | Email 3 — Social proof / outcome mention |
-| 4 | Email 4 — Final nudge / wrap up |
-| 5 | Cooldown — no emails |
-| → | Restart at Week 1 |
+## Setup (on a fresh checkout)
 
-Full cadence details in `references/cadence.md`.
-
-### 5. Reply Handling
-
-Run `python3 scripts/process_replies.py --imap` to poll Gabby's inbox for new replies.
-
-- `--dry-run` previews without sending notifications or auto-replies
-- `--webhook-payload '...'` for testing with a JSON payload
-- Requires `SENDGRID_API_KEY_TD` and `IMAP_PASS` environment variables
-
-For each reply:
-1. Match to original contact via email
-2. Classify intent (positive / negative / out-of-office / bounce)
-3. If positive → send lead notification to `growth@paramountals.com` with full details + auto-reply from Gabby to continue the conversation
-4. If negative → mark suppressed, remove from rotation
-5. If OOO → log, retry next cycle
-
-Full reply handling spec in `references/reply-handling.md`.
+```bash
+git clone https://github.com/mattvalenta/peer-outreach.git
+cd peer-outreach
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env with database URLs and Gmail credentials
+# Run migration: python3 scripts/add_followup_column.py
+```
 
 ## Database Fields Required
 
-See `references/database.md` for full schema.
+See `references/database.md` for full schema (`peer_outreach_*` tables in `sales_crm`).

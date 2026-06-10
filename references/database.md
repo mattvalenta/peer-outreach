@@ -54,6 +54,7 @@ CREATE TABLE peer_outreach_contacts (
     outreach_week INTEGER DEFAULT 1,
     cycle_count INTEGER DEFAULT 0,
     last_sent_at TIMESTAMP,
+    followup_sent_at TIMESTAMP,        -- last follow-up email sent at (auto@paramountals.net)
     last_reply_at TIMESTAMP,
     reply_intent VARCHAR(20),
     created_at TIMESTAMP DEFAULT NOW(),
@@ -115,6 +116,43 @@ WHERE status = 'active'
 ORDER BY last_sent_at ASC NULLS FIRST
 LIMIT 100;
 ```
+
+## Follow-Up Send Query (auto@paramountals.net)
+
+Contacts that received Gabby's email 2+ days ago, haven't bounced, and haven't
+received a follow-up for that specific Gabby send yet.
+
+```sql
+SELECT
+    poc.id, poc.first_name, poc.last_name, poc.email,
+    poc.followup_sent_at,
+    pol.week AS gabby_week,
+    pol.created_at AS gabby_sent_at
+FROM peer_outreach_contacts poc
+INNER JOIN (
+    SELECT contact_id, week, created_at,
+           ROW_NUMBER() OVER (PARTITION BY contact_id ORDER BY created_at DESC) AS rn
+    FROM peer_outreach_log
+) pol ON pol.contact_id = poc.id AND pol.rn = 1
+WHERE poc.status = 'active'
+  AND poc.reply_intent IS NULL
+  AND pol.created_at <= NOW() - INTERVAL '2 days'
+  AND (
+    poc.followup_sent_at IS NULL
+    OR poc.followup_sent_at < pol.created_at
+  )
+ORDER BY pol.created_at ASC
+LIMIT 100;
+```
+
+## Senders
+
+| Sender | Email | Purpose | SMTP |
+|--------|-------|---------|------|
+| Gabby Pals | gabby@trafficdriver.ai | Primary weekly emails (weeks 1-4) | Gmail SMTP |
+| Alex Martin | auto@paramountals.net | Follow-up emails (2 days after Gabby) | Gmail SMTP |
+
+Both log to `peer_outreach_log`. Follow-ups are prefixed with `[Follow-up]` in the subject column.
 
 ## Seed Query (from clients DB)
 
