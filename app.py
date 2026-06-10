@@ -4,25 +4,26 @@ Peer Outreach — Web Server
 Lightweight Flask app that exposes the outreach scripts as HTTP endpoints.
 Cloud Scheduler calls these endpoints daily to run the send/reply pipeline.
 
-Endpoints:
-  GET  /health           — Health check
-  POST /send             — Run primary send (gabby@trafficdriver.ai)
-  POST /send-followup    — Run follow-up send (auto@paramountals.net)
-  POST /process-replies  — Process inbound replies
+Scripts run in background threads so the HTTP response returns immediately.
 """
 
 import os
 import subprocess
 import sys
+import threading
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "scripts")
 
+# Track running jobs to prevent overlap
+_running_jobs = {}
+_jobs_lock = threading.Lock()
 
-def run_script(script_name, extra_args=None):
-    """Run a script and return its output."""
+
+def run_script_background(script_name, extra_args=None):
+    """Run a script in a background thread."""
     script_path = os.path.join(SCRIPTS_DIR, script_name)
     cmd = [sys.executable, script_path]
     if extra_args:
@@ -33,29 +34,52 @@ def run_script(script_name, extra_args=None):
             cmd,
             capture_output=True,
             text=True,
-            timeout=5400,  # 90 min max
+            timeout=10800,  # 3 hour max
             cwd=os.path.dirname(__file__),
             env=os.environ.copy(),
         )
-        return {
-            "exit_code": result.returncode,
-            "stdout": result.stdout[-5000:] if result.stdout else "",
-            "stderr": result.stderr[-2000:] if result.stderr else "",
-        }
+        status = "completed" if result.returncode == 0 else "failed"
+        print(f"[{script_name}] {status}: exit={result.returncode}")
+        if result.stdout:
+            print(f"[{script_name}] stdout: {result.stdout[-2000:]}")
+        if result.stderr:
+            print(f"[{script_name}] stderr: {result.stderr[-1000:]}")
     except subprocess.TimeoutExpired:
-        return {"exit_code": -1, "stdout": "", "stderr": "Script timed out after 90 minutes"}
+        print(f"[{script_name}] timed out after 3 hours")
     except Exception as e:
-        return {"exit_code": -1, "stdout": "", "stderr": str(e)}
+        print(f"[{script_name}] error: {e}")
+    finally:
+        with _jobs_lock:
+            _running_jobs.pop(script_name, None)
+
+
+def start_script(script_name, extra_args=None):
+    """Start a script in background if not already running. Returns status dict."""
+    with _jobs_lock:
+        if script_name in _running_jobs:
+            return {"status": "already_running", "started_at": _running_jobs[script_name]}
+
+    thread = threading.Thread(
+        target=run_script_background,
+        args=(script_name, extra_args),
+        daemon=True,
+    )
+    with _jobs_lock:
+        import datetime
+        _running_jobs[script_name] = datetime.datetime.utcnow().isoformat()
+    thread.start()
+    return {"status": "started"}
 
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "service": "peer-outreach"})
+    running = list(_running_jobs.keys())
+    return jsonify({"status": "ok", "service": "peer-outreach", "running_jobs": running})
 
 
 @app.route("/send", methods=["POST"])
 def send_primary():
-    """Run primary send from gabby@trafficdriver.ai."""
+    """Start primary send from gabby@trafficdriver.ai (background)."""
     limit = request.args.get("limit", type=int)
     dry_run = request.args.get("dry_run", "false").lower() == "true"
 
@@ -65,14 +89,13 @@ def send_primary():
     if limit:
         args.extend(["--limit", str(limit)])
 
-    result = run_script("send_outreach_emails.py", args)
-    status = 200 if result["exit_code"] == 0 else 500
-    return jsonify(result), status
+    result = start_script("send_outreach_emails.py", args)
+    return jsonify(result)
 
 
 @app.route("/send-followup", methods=["POST"])
 def send_followup():
-    """Run follow-up send from auto@paramountals.net."""
+    """Start follow-up send from auto@paramountals.net (background)."""
     limit = request.args.get("limit", type=int)
     dry_run = request.args.get("dry_run", "false").lower() == "true"
     delay_days = request.args.get("delay_days", type=int)
@@ -85,14 +108,13 @@ def send_followup():
     if delay_days:
         args.extend(["--delay-days", str(delay_days)])
 
-    result = run_script("send_followup_emails.py", args)
-    status = 200 if result["exit_code"] == 0 else 500
-    return jsonify(result), status
+    result = start_script("send_followup_emails.py", args)
+    return jsonify(result)
 
 
 @app.route("/process-replies", methods=["POST"])
 def process_replies():
-    """Process inbound replies from Gabby's inbox."""
+    """Start reply processing (background)."""
     dry_run = request.args.get("dry_run", "false").lower() == "true"
     mark_read = request.args.get("mark_read", "false").lower() == "true"
 
@@ -102,9 +124,8 @@ def process_replies():
     if mark_read:
         args.append("--mark-read")
 
-    result = run_script("process_replies.py", args)
-    status = 200 if result["exit_code"] == 0 else 500
-    return jsonify(result), status
+    result = start_script("process_replies.py", args)
+    return jsonify(result)
 
 
 if __name__ == "__main__":
